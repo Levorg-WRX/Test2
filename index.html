@@ -1,1 +1,101 @@
 
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>顔診断AI</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; }
+    img { max-width: 100%; height: auto; margin: 10px 0; }
+    #result { margin-top: 10px; font-size: 18px; }
+    .loading { font-style: italic; color: gray; }
+  </style>
+</head>
+<body>
+  <h2>📷 写真を選ぶだけで診断！</h2>
+  <input type="file" id="imageUpload" accept="image/*"><br>
+  <div id="status" class="loading">🔄 モデル読み込み中…</div>
+  <img id="preview" src="" style="display:none;">
+  <div id="result"></div>
+
+  <script>
+    const MODEL_URL = "https://levorg-wrx.github.io/face-api-host/models";
+
+    Promise.all([
+      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+        .then(() => console.log("✅ ssdMobilenetv1 読み込み成功"))
+        .catch(e => console.error("❌ ssdMobilenetv1 読み込み失敗", e)),
+
+      faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL)
+        .then(() => console.log("✅ ageGenderNet 読み込み成功"))
+        .catch(e => console.error("❌ ageGenderNet 読み込み失敗", e)),
+
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+        .then(() => console.log("✅ faceExpressionNet 読み込み成功"))
+        .catch(e => console.error("❌ faceExpressionNet 読み込み失敗", e))
+    ]).then(() => {
+      document.getElementById('status').textContent = '📂 画像を選んでね';
+    }).catch(() => {
+      document.getElementById('status').textContent = '❌ モデル読み込みに失敗しました';
+    });
+
+    document.getElementById('imageUpload').addEventListener('change', async (event) => {
+      const imgFile = event.target.files[0];
+      if (!imgFile) return;
+
+      const img = document.getElementById('preview');
+      img.src = URL.createObjectURL(imgFile);
+      img.style.display = 'block';
+      document.getElementById('status').textContent = '🧠 診断中…';
+      document.getElementById('result').innerHTML = '';
+
+      await img.onload;
+
+      try {
+        const detection = await faceapi
+          .detectSingleFace(img)
+          .withAgeAndGender()
+          .withFaceExpressions();
+
+        if (!detection) {
+          document.getElementById('status').textContent = '😢 顔が検出できませんでした';
+          return;
+        }
+
+        const age = Math.round(detection.age);
+        const gender = detection.gender === 'male' ? '男性' : '女性';
+        const expressions = detection.expressions;
+        const topExpression = Object.entries(expressions).sort((a, b) => b[1] - a[1])[0][0];
+
+        const funnyComment = getFunnyComment(age, gender, topExpression);
+
+        document.getElementById('status').textContent = '✅ 診断完了！';
+        document.getElementById('result').innerHTML = `
+          <p>🧓 年齢: ${age}歳</p>
+          <p>🚻 性別: ${gender}</p>
+          <p>😄 表情: ${topExpression}</p>
+          <p>💬 コメント: ${funnyComment}</p>
+        `;
+      } catch (err) {
+        console.error("❌ 診断エラー:", err);
+        document.getElementById('status').textContent = '❌ 診断中にエラーが発生しました';
+      }
+    });
+
+    function getFunnyComment(age, gender, expression) {
+      const base = `${gender}で${age}歳、${expression}な表情ですね！`;
+      const extras = {
+        happy: '今日いいことありました？😄',
+        angry: '怒ってる？落ち着いて☕️',
+        sad: '元気出して！🌈',
+        surprised: '何見たの!?😲',
+        neutral: 'まるでAIのような無表情🤖',
+        fearful: 'ビクビクしてる…👻',
+        disgusted: '何かイヤなもの見た？💩'
+      };
+      return base + ' ' + (extras[expression] || '');
+    }
+  </script>
+</body>
+</html>
